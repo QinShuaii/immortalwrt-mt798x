@@ -43,9 +43,9 @@ jobs:
           rm -rf package/feeds/luci/applications/luci-app-mtwifi* 2>/dev/null || true
           # 2) 清掉 .config 里所有 WiFi/wpad 残留行
           sed -i -E '/^#? *CONFIG_.*(MT_WIFI|WARP|CONNINFRA|MTK_WIFI|wifi|WIFI|wpad|hostapd|WIRELESS|wireless).*$/d' .config
-          # 3) 只编 EX5700 一个机型
+          # 3) 只编 EX5700 一个机型（注意符号名：TARGET_DEVICE_ 开头！）
           sed -i '/^CONFIG_TARGET_DEVICE/d' .config
-          sh ./scripts/config --enable TARGET_mediatek_mt7986_DEVICE_zyxel_ex5700
+          sh ./scripts/config --enable TARGET_DEVICE_mediatek_mt7986_DEVICE_zyxel_ex5700
           # 4) 有线加速 + PPPoE 拨号
           sh ./scripts/config --enable MTK_WHNAT_SUPPORT \
             --enable PACKAGE_kmod-mediatek_hnat \
@@ -53,6 +53,8 @@ jobs:
             --enable PACKAGE_luci-proto-ppp
           make defconfig
           echo "===== 最终检查 ====="
+          grep -E '^CONFIG_TARGET_DEVICE_mediatek_mt7986_DEVICE_zyxel_ex5700=y' .config \
+            || { echo "EX5700 机型未选中，中止"; exit 1; }
           if grep -iE '^CONFIG_.*(mt_wifi|warp|conninfra|mtwifi|wifi-dats).*=[ym]$' .config; then
             echo "WiFi 残留，中止"; exit 1
           else
@@ -69,6 +71,8 @@ jobs:
           mkdir -p out
           find bin/targets/mediatek/mt7986 -name "*zyxel_ex5700*" -exec cp {} out/ \;
           cp .config out/.config.used
+          [ "$(ls -A out | grep -v config.used)" ] \
+            || { echo "编译完成但未产出 EX5700 镜像！实际产物如下："; find bin/targets -name "*.bin" | head -50; exit 1; }
 
       - name: Dump config on failure
         if: failure()
