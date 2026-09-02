@@ -43,17 +43,21 @@ jobs:
           rm -rf package/feeds/luci/applications/luci-app-mtwifi* 2>/dev/null || true
           # 2) 清掉 .config 里所有 WiFi/wpad 残留行
           sed -i -E '/^#? *CONFIG_.*(MT_WIFI|WARP|CONNINFRA|MTK_WIFI|wifi|WIFI|wpad|hostapd|WIRELESS|wireless).*$/d' .config
-          # 3) 只编 EX5700 一个机型（注意符号名：TARGET_DEVICE_ 开头！）
-          sed -i '/^CONFIG_TARGET_DEVICE/d' .config
-          sh ./scripts/config --enable TARGET_DEVICE_mediatek_mt7986_DEVICE_zyxel_ex5700
-          # 4) 有线加速 + PPPoE 拨号
+          # 3) 有线加速 + PPPoE 拨号
           sh ./scripts/config --enable MTK_WHNAT_SUPPORT \
             --enable PACKAGE_kmod-mediatek_hnat \
             --enable PACKAGE_ppp --enable PACKAGE_ppp-mod-pppoe \
             --enable PACKAGE_luci-proto-ppp
           make defconfig
+          # 4) EX5700 必须选中（defconfig 原生就有；万一丢了就自愈补回）
+          if ! grep -q 'DEVICE_zyxel_ex5700=y' .config; then
+            echo "EX5700 选择丢失，强制补回..."
+            sh ./scripts/config --enable TARGET_MULTI_PROFILE \
+              --enable TARGET_DEVICE_mediatek_mt7986_DEVICE_zyxel_ex5700
+            make defconfig
+          fi
           echo "===== 最终检查 ====="
-          grep -E '^CONFIG_TARGET_DEVICE_mediatek_mt7986_DEVICE_zyxel_ex5700=y' .config \
+          grep 'DEVICE_zyxel_ex5700=y' .config \
             || { echo "EX5700 机型未选中，中止"; exit 1; }
           if grep -iE '^CONFIG_.*(mt_wifi|warp|conninfra|mtwifi|wifi-dats).*=[ym]$' .config; then
             echo "WiFi 残留，中止"; exit 1
