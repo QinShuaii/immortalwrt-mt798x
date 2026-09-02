@@ -26,17 +26,16 @@ jobs:
       - name: Configure
         run: |
           cp defconfig/mt7986-ax7800.config .config
-          chmod +x scripts/config
           # 只编译 EX5700 一个 profile，省时间
           sed -i '/^CONFIG_TARGET_DEVICE/d' .config
-          sh ./scripts/config --enable TARGET_mediatek_mt7986_DEVICE_zyxel_ex5700
+          ./scripts/config --enable TARGET_mediatek_mt7986_DEVICE_zyxel_ex5700
           # 关键修复：WiFi 项显式置 not set（删行会被 default y 复活）
           sed -i -E 's/^(CONFIG_.*(MT_WIFI|WARP|CONNINFRA|MTK_WIFI|wifi|WIFI).*)=[ym]$/# \1 is not set/' .config
           make defconfig
           # 二次清扫：若 defconfig 又恢复了哪个 WiFi 项，强制再关一遍
           for s in $(grep -iE '^CONFIG_.*(mt_wifi|warp|conninfra|mtwifi|wifi-dats).*=[ym]$' .config | sed -E 's/^CONFIG_//; s/=.*//'); do
             echo "re-disable: $s"
-            sh ./scripts/config --disable "$s"
+            ./scripts/config --disable "$s"
           done
           make defconfig
           echo "===== WiFi 残留检查 ====="
@@ -46,7 +45,7 @@ jobs:
             echo "OK: 无任何 WiFi 组件"
           fi
           # 有线加速 + PPPoE 拨号
-          sh ./scripts/config --enable MTK_WHNAT_SUPPORT \
+          ./scripts/config --enable MTK_WHNAT_SUPPORT \
             --enable PACKAGE_kmod-mediatek_hnat \
             --enable PACKAGE_ppp --enable PACKAGE_ppp-mod-pppoe \
             --enable PACKAGE_luci-proto-ppp
