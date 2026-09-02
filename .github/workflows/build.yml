@@ -26,31 +26,33 @@ jobs:
       - name: Configure
         run: |
           cp defconfig/mt7986-ax7800.config .config
-          # 只编译 EX5700 一个 profile，省时间
+          chmod +x scripts/config
+          # 1) 物理删除闭源 WiFi 包（不存在 = 不可能复活）
+          rm -rf package/mtk/drivers/mt_wifi \
+                 package/mtk/drivers/warp \
+                 package/mtk/drivers/conninfra \
+                 package/mtk/drivers/wifi-profile \
+                 package/mtk/applications/mtwifi-cfg \
+                 package/mtk/applications/luci-app-mtwifi-cfg
+          # 2) 清掉 .config 里所有 WiFi/wpad 残留行
+          sed -i -E '/^#? *CONFIG_.*(MT_WIFI|WARP|CONNINFRA|MTK_WIFI|wifi|WIFI|wpad|hostapd|WIRELESS|wireless).*$/d' .config
+          # 3) 只编 EX5700 一个机型
           sed -i '/^CONFIG_TARGET_DEVICE/d' .config
-          ./scripts/config --enable TARGET_mediatek_mt7986_DEVICE_zyxel_ex5700
-          # 关键修复：WiFi 项显式置 not set（删行会被 default y 复活）
-          sed -i -E 's/^(CONFIG_.*(MT_WIFI|WARP|CONNINFRA|MTK_WIFI|wifi|WIFI).*)=[ym]$/# \1 is not set/' .config
-          make defconfig
-          # 二次清扫：若 defconfig 又恢复了哪个 WiFi 项，强制再关一遍
-          for s in $(grep -iE '^CONFIG_.*(mt_wifi|warp|conninfra|mtwifi|wifi-dats).*=[ym]$' .config | sed -E 's/^CONFIG_//; s/=.*//'); do
-            echo "re-disable: $s"
-            ./scripts/config --disable "$s"
-          done
-          make defconfig
-          echo "===== WiFi 残留检查 ====="
-          if grep -iE '^CONFIG_.*(mt_wifi|warp|conninfra|mtwifi|wifi-dats).*=[ym]$' .config; then
-            echo "WiFi 组件仍然存在，中止"; exit 1
-          else
-            echo "OK: 无任何 WiFi 组件"
-          fi
-          # 有线加速 + PPPoE 拨号
-          ./scripts/config --enable MTK_WHNAT_SUPPORT \
+          sh ./scripts/config --enable TARGET_mediatek_mt7986_DEVICE_zyxel_ex5700
+          # 4) 有线加速 + PPPoE 拨号
+          sh ./scripts/config --enable MTK_WHNAT_SUPPORT \
             --enable PACKAGE_kmod-mediatek_hnat \
             --enable PACKAGE_ppp --enable PACKAGE_ppp-mod-pppoe \
             --enable PACKAGE_luci-proto-ppp
           make defconfig
-          grep -E "hnat|ppp-mod" .config | grep "=y"
+          echo "===== 最终检查 ====="
+          if grep -iE '^CONFIG_.*(mt_wifi|warp|conninfra|mtwifi|wifi-dats).*=[ym]$' .config; then
+            echo "WiFi 残留，中止"; exit 1
+          else
+            echo "OK: 固件中无任何 WiFi 组件"
+          fi
+          grep -E 'CONFIG_MTK_WHNAT_SUPPORT=y|CONFIG_PACKAGE_kmod-mediatek_hnat=y|CONFIG_PACKAGE_ppp-mod-pppoe=y' .config \
+            || { echo "有线加速/PPPoE 未启用，中止"; exit 1; }
 
       - name: Build
         run: |
