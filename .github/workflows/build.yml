@@ -1,0 +1,58 @@
+name: Build EX5700 NoWiFi
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1          # 浅克隆，省时间省磁盘
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
+          df -h
+
+      - name: Install deps
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential acpica-tools clang flex bison \
+            g++ gawk gcc-multilib g++-multilib gettext git libncurses-dev \
+            libssl-dev python3 python3-setuptools rsync swig uuid-dev \
+            zlib1g-dev unzip lib32z1-dev ccache libelf-dev
+
+      - name: Configure
+        run: |
+          cp defconfig/mt7986-ax7800.config .config
+          # —— 砍光 WiFi（hnat 有线加速不依赖这些，保留）——
+          sed -i '/MT_WIFI/d; /WARP/d; /CONNINFRA/d; /wifi-dats/d; \
+            /mtwifi/d; /WIRELESS/d; /ADIE/d; /MTK_HWIFI/d' .config
+          # —— 补上有线加速 + PPPoE 拨号 ——
+          cat >> .config <<'EOF'
+          CONFIG_MTK_WHNAT_SUPPORT=y
+          CONFIG_PACKAGE_kmod-mediatek_hnat=y
+          CONFIG_PACKAGE_ppp=y
+          CONFIG_PACKAGE_ppp-mod-pppoe=y
+          CONFIG_PACKAGE_luci-proto-ppp=y
+          EOF
+          make defconfig
+          echo "===== WiFi 残留检查 ====="
+          grep -E "^CONFIG_(PACKAGE_)?(kmod-)?(mt_wifi|warp|conninfra|mtwifi|wifi-dats).*=[my]$" .config \
+            && { echo "还有 WiFi 包没砍干净"; exit 1; } \
+            || echo "OK: 无任何 WiFi 组件"
+          grep -E "hnat|ppp" .config | grep "=y"
+
+      - name: Build
+        run: |
+          make -j$(($(nproc)-1)) || make -j1 V=s
+          mkdir -p out
+          cp bin/targets/mediatek/mt7986/*.sha256sum out/ 2>/dev/null || true
+          find bin/targets/mediatek/mt7986 -name "*zyxel_ex5700*" -exec cp {} out/ \;
+          cp .config out/.config.used
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-ex5700-nowifi
+          path: out/
